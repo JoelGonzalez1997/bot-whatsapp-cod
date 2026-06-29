@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>COD Bot - Panel</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; padding: 20px; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    header { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    header h1 { color: #333; margin-bottom: 10px; }
+    .status { display: inline-block; padding: 8px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; margin-left: 10px; }
+    .status.online { background: #d4edda; color: #155724; }
+    .status.offline { background: #f8d7da; color: #721c24; }
+    .filters { margin-bottom: 20px; display: flex; gap: 10px; }
+    .filter-btn { padding: 8px 16px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer; font-weight: 500; transition: all 0.2s; }
+    .filter-btn.active { background: #007bff; color: white; border-color: #007bff; }
+    .orders-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 15px; }
+    .order-card { background: white; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid #007bff; }
+    .order-card.CONFIRMADO { border-left-color: #28a745; }
+    .order-card.CANCELADO { border-left-color: #dc3545; }
+    .order-card.DIRECCION_INCOMPLETA { border-left-color: #fd7e14; }
+    .order-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #eee; }
+    .order-number { font-size: 16px; font-weight: bold; color: #333; }
+    .order-status { display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; background: #e9ecef; color: #495057; }
+    .order-status.CONFIRMADO { background: #d4edda; color: #155724; }
+    .order-status.CANCELADO { background: #f8d7da; color: #721c24; }
+    .order-info { font-size: 13px; color: #666; line-height: 1.6; }
+    .info-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
+    .info-label { font-weight: 500; color: #333; }
+    .address-box { background: #f8f9fa; padding: 10px; border-radius: 4px; margin: 10px 0; font-size: 12px; border-left: 3px solid #007bff; }
+    .empty { text-align: center; padding: 40px; color: #999; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🤖 COD Bot - Panel
+        <span class="status" id="status">Conectando...</span>
+      </h1>
+    </header>
+
+    <div class="filters">
+      <button class="filter-btn active" data-filter="all">📊 Todas (0)</button>
+      <button class="filter-btn" data-filter="CONFIRMACION_SOLICITADA">⏳ Pendientes (0)</button>
+      <button class="filter-btn" data-filter="CONFIRMADO">✅ Confirmadas (0)</button>
+      <button class="filter-btn" data-filter="CANCELADO">❌ Canceladas (0)</button>
+    </div>
+
+    <div id="orders-container"></div>
+  </div>
+
+  <script>
+    let allOrders = [];
+    let currentFilter = 'all';
+
+    async function loadOrders() {
+      try {
+        const res = await fetch('/api/orders');
+        allOrders = await res.json();
+        render();
+        updateStatus();
+      } catch (err) {
+        console.error('Error:', err);
+      }
+    }
+
+    function render() {
+      const filtered = currentFilter === 'all'
+        ? allOrders
+        : allOrders.filter(o => o.order_status === currentFilter);
+
+      if (filtered.length === 0) {
+        document.getElementById('orders-container').innerHTML = '<div class="empty">No hay órdenes</div>';
+        return;
+      }
+
+      document.getElementById('orders-container').innerHTML = `
+        <div class="orders-grid">
+          ${filtered.map(order => `
+            <div class="order-card ${order.order_status}">
+              <div class="order-header">
+                <div class="order-number">#${order.easy_cod_order_id}</div>
+                <div class="order-status ${order.order_status}">${order.order_status.replace(/_/g, ' ')}</div>
+              </div>
+              <div class="order-info">
+                <div class="info-row">
+                  <span class="info-label">👤 Cliente:</span>
+                  <span>${order.customer_name}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">📞 Teléfono:</span>
+                  <span>${order.customer_phone}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">🛍️ Producto:</span>
+                  <span>${order.product_name}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">💰 Total:</span>
+                  <span>$${order.product_total}</span>
+                </div>
+                <div class="address-box">
+                  <strong>📍 Dirección:</strong><br>
+                  ${order.customer_address1}<br>
+                  ${order.customer_city}, ${order.customer_province}
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function updateStatus() {
+      const statuses = ['all', 'CONFIRMACION_SOLICITADA', 'CONFIRMADO', 'CANCELADO'];
+      statuses.forEach(status => {
+        const count = status === 'all'
+          ? allOrders.length
+          : allOrders.filter(o => o.order_status === status).length;
+
+        const btn = document.querySelector(`[data-filter="${status}"]`);
+        if (btn) {
+          const label = btn.textContent.split('(')[0];
+          btn.textContent = label + `(${count})`;
+        }
+      });
+    }
+
+    async function checkStatus() {
+      try {
+        const res = await fetch('/status');
+        const data = await res.json();
+        const badge = document.getElementById('status');
+        if (data.whatsappConnected) {
+          badge.textContent = '✅ Conectado';
+          badge.className = 'status online';
+        } else {
+          badge.textContent = '🔄 Conectando...';
+          badge.className = 'status offline';
+        }
+      } catch {
+        document.getElementById('status').textContent = '❌ Error';
+        document.getElementById('status').className = 'status offline';
+      }
+    }
+
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentFilter = btn.dataset.filter;
+        render();
+      });
+    });
+
+    loadOrders();
+    checkStatus();
+    setInterval(loadOrders, 5000);
+    setInterval(checkStatus, 10000);
+  </script>
+</body>
+</html>
